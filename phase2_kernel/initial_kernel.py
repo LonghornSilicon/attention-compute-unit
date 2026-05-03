@@ -1,5 +1,7 @@
 import torch
 import math
+import triton
+import triton.language as tl
 
 
 def _quantize_int8(x):
