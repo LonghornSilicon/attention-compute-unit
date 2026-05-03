@@ -59,9 +59,6 @@ def evaluate(program_path):
         try:
             Q, K, V = generate_workload(cfg, seed=42 + idx)
 
-            if torch.cuda.is_available():
-                Q, K, V = Q.cuda(), K.cuda(), V.cuda()
-
             with torch.no_grad():
                 O_ref = reference_attention(
                     Q.double(), K.double(), V.double(), causal=cfg["causal"]
