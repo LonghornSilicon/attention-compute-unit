@@ -402,6 +402,31 @@ tests covering correctness (MAE $<$0.02), autoregressive append, and
 multi-layer storage.
 
 %------------------------------------------------------------------
+\section{Triton Kernel Prototype}
+
+We implement the precision policy as a Triton kernel on an NVIDIA RTX
+A4000. The kernel follows the FA-2 tile loop exactly, adding three
+lines after computing $S = QK^\top$:
+
+\begin{lstlisting}[caption={Precision decision inside the Triton tile loop.}]
+abs_s  = tl.abs(s)
+ratio  = tl.max(abs_s) / (tl.sum(abs_s) / (BLOCK_M * BLOCK_N) + 1e-6)
+use_int8 = ratio < RATIO_THRESHOLD  # scalar bool
+\end{lstlisting}
+
+When \texttt{use\_int8} is true, $K$ and $V$ are symmetrically
+quantized to INT8 and dequantized before the dot products; otherwise
+FP16 values are used unchanged. All 12 workloads pass correctness
+tests (kernel output within 3$\times$ SDPA error vs.\ FP32 reference),
+and all 12/12 precision decisions match the ratio~$>$~10 rule.
+
+The kernel currently runs $2.3$--$8.7\times$ slower than PyTorch SDPA
+because Triton's \texttt{tl.dot} always uses FP16 compute---simulated
+INT8 adds quantize/dequantize roundtrips rather than saving multiplier
+cycles. The throughput gain materialises only on hardware with integer
+multiply units (FPGA DSPs in INT8 mode, or ASIC integer multipliers).
+
+%------------------------------------------------------------------
 \section{Hardware Design Implications}
 
 \subsection{Why Simple Beats Learned}
