@@ -1,17 +1,23 @@
 # timing.sdc — SDC timing constraints for Cadence Genus/Innovus (ASIC flow)
 #
-# Technology assumptions:
-#   TSMC 28nm HPC+  (common shuttle target)
-#   Target: 500 MHz = 2.0 ns period at worst-case SS 0.9V 125C corner
-#   The precision controller is ~100 cells — will likely meet 1 GHz+ after P&R
+# Primary target:
+#   TSMC 16FFC (16nm FinFET Compact) via TSMC University Program
+#   Target: 800 MHz = 1.25 ns period, signed off at SS 0.72V 125C
+#
+# Justification: ASAP7 (open 7nm proxy) measured 430 ps critical path on the
+# Q→sum_acc→comparator→d_fp16 chain. Scaling to 16FFC TT corner (~2x slower
+# transistors) gives ~860 ps. SS worst-case ~1300 ps — at the edge of 1.25 ns.
+# If sign-off slack is negative at SS we can either (a) lower target to
+# 700 MHz (1.43 ns), or (b) add one register stage between sum_next and the
+# 24-bit comparator (cuts critical path ~50%, costs ~24 extra FFs).
 #
 # For other process nodes, scale period:
-#   TSMC 65nm:   target 300 MHz → period 3.3 ns
-#   TSMC 16nm:   target 800 MHz → period 1.25 ns
-#   Sky130 (OSS shuttle): target 100 MHz → period 10 ns
+#   TSMC 28nm HPC+:  target 500 MHz → period 2.0 ns
+#   TSMC 65nm:       target 300 MHz → period 3.3 ns
+#   Sky130 (OSS):    target 100 MHz → period 10 ns
 
 # Primary clock
-create_clock -name clk -period 2.0 [get_ports clk]
+create_clock -name clk -period 1.25 [get_ports clk]
 
 # Clock uncertainty (jitter + skew budget)
 set_clock_uncertainty 0.1 [get_clocks clk]

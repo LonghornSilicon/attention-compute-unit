@@ -10,6 +10,7 @@ analysis/dashboard.html
 rtl/*.out
 rtl/*.vcd
 rtl/synth.log
+rtl/build/
 # Generated hex vectors (reproducible from analysis/gen_rtl_testvectors.py)
 rtl/tb/testvectors/scores.hex
 rtl/tb/testvectors/expected.hex
