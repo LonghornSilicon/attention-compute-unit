@@ -285,6 +285,107 @@ clock-gating register, no power state machine, and no DFT scan-chain control
 at this stub level (those land on the chip-level ISA when the full chip is
 defined).
 
+\subsection{Worked Lowering Example}
+\label{sec:lowering}
+
+This section walks through how a representative compiler IR operation lowers
+to a sequence of ISA operations. The example uses a generic high-level
+\texttt{flash\_attention} op that any silicon-agnostic compiler is likely to
+have; the binding to a specific compiler IR (MLIR, TVM Relax, ONNX, etc.) is
+discussed in \S\ref{sec:bindings}.
+
+Suppose the compiler's IR contains:
+\begin{lstlisting}[basicstyle=\ttfamily\small\itshape]
+%out = flash_attention(%q, %k, %v)
+    : tensor<S x D x f16>, tensor<S x D x f16>, tensor<S x D x f16>
+    -> tensor<S x D x f16>
+\end{lstlisting}
+
+The lowering proceeds in three stages. \textbf{Stage~1: setup.} The compiler
+queries the chip's tile dimensions once per compilation unit:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+info = PC_QUERY()                 // -> block_m=64, block_n=64, n=4096
+PC_RESET()
+PC_ENABLE()
+\end{lstlisting}
+
+\textbf{Stage~2: per-tile loop.} For each (BLOCK\_M, BLOCK\_N) sub-block of
+the $Q \!\cdot\! K^{\top}$ matrix, the compiler emits a precision-routing
+decision before dispatching the actual matmul:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+for (tile_i, tile_j) in tiles_of(Q, K):
+    scores = Q[tile_i] @ K[tile_j].T         // FP16, computed in shared SRAM
+    PC_PUSH_TILE(scores.flatten())           // stream N scores in
+    decision = PC_READ()                     // 1 cycle after tlast
+
+    if decision == FP16:
+        out_tile = fp16_matmul(scores, V[tile_j])
+    else:
+        scores_int8 = quantize_int8(scores)
+        out_tile = int8_matmul(scores_int8, V[tile_j])
+    accumulate(out, out_tile)
+\end{lstlisting}
+
+\textbf{Stage~3: batching (optional).} For higher throughput the compiler
+can pre-queue many tiles into \texttt{PC\_PUSH\_TILE} and pop decisions
+in batches once enough have completed:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+for tile in tiles[:k]:
+    PC_PUSH_TILE(tile_scores(tile))      // tiles fan into the FIFO
+decisions = PC_READ_BATCH(k)              // pop k results at once
+dispatch_int8_tiles ([t for t,d in zip(tiles,decisions) if not d], V)
+dispatch_fp16_tiles ([t for t,d in zip(tiles,decisions) if     d], V)
+\end{lstlisting}
+
+\noindent
+The same three stages work whether the compiler's target is the Python
+reference model (phase~0), the FPGA prototype (phase~1), or the silicon
+chip (phase~3). Only the runtime implementation of \texttt{PC\_*} changes
+under the hood --- Python function call, AXI register write, or PCIe MMIO,
+respectively. The lowered IR is identical.
+
+\subsection{Compiler Binding Patterns}
+\label{sec:bindings}
+
+The five logical operations in Table~\ref{tab:regs} cover every interaction
+a compiler needs with the precision controller. How those operations
+surface inside a given compiler depends on the compiler's IR. Sketches of
+the four most common patterns:
+
+\noindent\textbf{MLIR dialect.} Define a \texttt{lhsi.pc.*} dialect with
+five ops corresponding to the table in \S\ref{sec:ops}. The lowering pass
+matches a \texttt{flash\_attention} (or vendor-equivalent) op and rewrites
+it into the \texttt{lhsi.pc} sequence above plus the appropriate
+\texttt{linalg.matmul} variants. Conversion to LLVM IR happens in a
+subsequent pass via a runtime call interface.
+
+\noindent\textbf{TVM Relax / TIR.} Register a backend target named
+\texttt{"lhsi-pc"}, add a pattern-matcher in the operator-fusion pass
+that recognizes attention sub-graphs, and emit calls to TVM-runtime
+extern functions named for each \texttt{PC\_*} operation. The TVM
+runtime then dispatches to either the Python reference (test mode) or
+the C driver (deployed mode).
+
+\noindent\textbf{ONNX --- graph rewriter.} Add an ONNX-Runtime
+\texttt{CustomOpDomain} with one op per \texttt{PC\_*}, then write a
+graph-transform pass that recognizes the attention pattern and inserts
+the custom ops in the right places. The runtime implementation of each
+custom op binds to either the Python reference or the C driver.
+
+\noindent\textbf{Custom IR.} If the compiler has its own IR, the
+integration point is wherever its codegen emits the lowest-level
+hardware-target operations. Replace the call-site for the existing
+attention codegen with a sequence of calls to \texttt{PC\_*} plus the
+precision-routed matmul kernels.
+
+In every case, the contract on our side is the same: a compiler binding
+that emits the ISA operations defined in this document is correct,
+testable today against the Python reference, and forward-compatible
+through every integration phase.
+
 %==============================================================================
 % 5. C API stub
 %==============================================================================
