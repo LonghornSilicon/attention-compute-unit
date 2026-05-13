@@ -7,6 +7,7 @@
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{url}
 \usepackage{hyperref}
 \usepackage{titlesec}
 \usepackage{parskip}
@@ -140,7 +141,7 @@ $(\Sigma \ll 3) + (\Sigma \ll 1)$. Changing either requires re-synthesis
 \textbf{Throughput:} one score per cycle, one decision per $N$ scores.\\
 \textbf{Footprint:} 30 flip-flops, $\sim$3.4\,k\,\textmu m\textsuperscript{2} stdcell at
 SkyWater Sky130A; projects to $\sim$150\,\textmu m\textsuperscript{2} at TSMC 16FFC.\\
-\textbf{Bit-exact reference:} \texttt{sw/reference\_model/precision\_controller\_ref.py}
+\textbf{Bit-exact reference:} \path{sw/reference_model/precision_controller_ref.py}
 (143/143 RTL replay tiles match).
 
 %==============================================================================
@@ -185,8 +186,6 @@ Offset & Name & Access & Reset & Purpose \\
 \texttt{W1C} = write-1-to-clear; (syn) = value fixed at synthesis time.
 Writes to read-only registers are silently dropped. Reading reserved offsets
 returns zero.
-
-\clearpage
 
 %==============================================================================
 % 3. Streaming data interfaces
@@ -353,8 +352,6 @@ int  lhsi_pc_status(lhsi_pc_handle_t *h, lhsi_pc_status_t *out);
 Return codes follow the standard Linux convention: \texttt{0} on success,
 \texttt{-errno} on failure.
 
-\clearpage
-
 %==============================================================================
 % 6. Synthesis-time configuration
 %==============================================================================
@@ -394,7 +391,7 @@ inequality.
 \label{sec:ref}
 
 The Python model at
-\texttt{sw/reference\_model/precision\_controller\_ref.py} is the canonical
+\path{sw/reference_model/precision_controller_ref.py} is the canonical
 bit-accurate reference for this ISA. A compiler can verify its codegen
 against the model directly:
 
@@ -407,7 +404,7 @@ decision = pc.process_tile(scores)   # exactly what the chip will return
 
 \noindent
 The model is verified bit-exact against the RTL testbench's 143 replay tiles
-(see \texttt{sw/reference\_model/test\_precision\_controller\_ref.py}). Any
+(see \path{sw/reference_model/test_precision_controller_ref.py}). Any
 divergence between the model and the chip is a bug in this specification,
 not in the chip.
 
@@ -421,18 +418,18 @@ This specification supports a staged integration that begins before silicon
 exists. The interface described in this document is the stable contract
 through every phase.
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \small
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{@{}l l p{4.5cm} p{5cm}@{}}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}c p{3.0cm} p{4.0cm} p{5.0cm}@{}}
 \toprule
-Phase   & Timeline                  & Compiler targets                          & We provide \\
+Phase & Timeline & Compiler targets & We provide \\
 \midrule
-0 (now) & This branch                & Bit-accurate Python reference model        & Model + ISA + tests on the \texttt{compiler-integration-prep} branch \\
-1       & When ZCU102/104 arrives    & AXI-Lite + AXI-Stream on Zynq Ultrascale+ & Vivado bitstream + PYNQ driver \\
-2       & After KV cache + token + memory blocks complete & Same AXI interface, more blocks visible & Multi-block FPGA project \\
-3       & Post-tape-out (2027+)      & PCIe-attached custom chip                  & TSMC 16FFC silicon + Linux driver \\
+0 & now & Bit-accurate Python reference model & Model + ISA + tests on the \texttt{compiler-integration-prep} branch \\
+1 & when ZCU102 / 104 arrives & AXI-Lite + AXI-Stream on Zynq UltraScale+ & Vivado bitstream + PYNQ driver \\
+2 & after KV-cache, token-importance, and memory-controller blocks complete & Same AXI interface, more blocks visible & Multi-block FPGA project \\
+3 & post-tape-out (2027+) & PCIe-attached custom chip & TSMC 16FFC silicon + Linux driver \\
 \bottomrule
 \end{tabular}
 \end{table}
