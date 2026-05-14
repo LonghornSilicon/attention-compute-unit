@@ -8,9 +8,12 @@ The pipeline lives in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 It is a thin caller for the shared workflow at
 `LonghornSilicon/.github/.github/workflows/block-ci.yml@main`, which
 runs all the actual jobs on GitHub-hosted Ubuntu (no self-hosted
-runner required). The shared workflow now includes line-coverage and
+runner required). The shared workflow includes line-coverage and
 formal-equivalence gates in addition to functional verification,
-synthesis, OpenLane Sky130 sign-off, and paper build.
+synthesis, OpenLane Sky130 sign-off, and paper build. Each job's
+first step ("About this gate") prints a description of its purpose,
+method, and what silicon-bug class it catches — click any job on the
+run page and expand that first step to read it.
 
 ## Trigger flow
 
