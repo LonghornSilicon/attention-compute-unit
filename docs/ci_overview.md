@@ -6,6 +6,8 @@ ZCU102/104 arrives.
 
 The pipeline lives in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
 Setup for the self-hosted runner is in [`docs/ci_setup.md`](ci_setup.md).
+The runner `longhorn-cloud-1` is registered at the **organization level**
+(`LonghornSilicon`) so every block repo shares the same hardware.
 
 ## Trigger flow
 
