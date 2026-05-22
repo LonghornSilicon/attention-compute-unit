@@ -1,5 +1,9 @@
 # KV Cache Engine x Precision Controller Integration Audit
 
+> **Superseded** by [`kvce_acu_integration_audit.tex` / `.pdf`](kvce_acu_integration_audit.pdf)
+> (`kvce-acu-audit-0.2`, 2026-05-22). This Markdown version is preserved
+> as the working history; the LaTeX version is the canonical document.
+
 **Branch:** `kvce-acu-integration-audit` (this repo)
 **KVCE fix:** `kv-cache-engine@9b1163a` (closes kv-cache-engine#1)
 **Status:** **Resolved.** KVCE reference model fixed; integration
