@@ -238,6 +238,101 @@ HellaSwag (n=250) running in background. ETA ~75 min.
 
 ---
 
+## 2026-06-08 — Per-layer ablation: C12 is concentrated in 3 layers
+
+After C11 closed, the open question for the chip's PolarQuant
+centroid design (C10/C12) was: is the +5.64 bits/tok C12 cost
+"spread evenly across layers" (-> bump everyone to turbo8) or
+"concentrated in a few" (-> hybrid per-layer mode select)? Wrote
+`analysis/c11_per_layer_ablation.py` + `_resume.py` to measure both
+directions:
+
+- **Single-layer:** KVCE on exactly one layer L (identity
+  elsewhere) -> marginal cost of compressing L.
+- **Leave-one-out:** KVCE on every layer except L -> recovery
+  from skipping L.
+
+Config: Qwen2-0.5B, mode `C_prenorm` (C1 already off, isolates the
+C12 / centroid-fit cost), n=16 chunks x 512 tokens. Wall: ~17 min
+once the model+pool are warm (single-layer is ~3.4 s, LOO is ~42 s
+because KVCE runs on 23 layers per chunk vs 1).
+
+**Reference points on this sample:**
+- Baseline A: PPL = 21.06
+- C_prenorm full: PPL = 1191.13
+- Log-gap: +4.035 nats (different chunk sample than the n=64 sweep,
+  so absolute numbers differ; gap-shape is what matters here)
+
+**The active set is 3 layers out of 24:**
+
+| Layer | single Δlog-PPL | LOO recovery |
+|------:|----------------:|-------------:|
+| **L0**  | **+2.761** | **+2.869** |
+| **L1**  | +0.362 | +0.653 |
+| **L23** | +0.041 | +0.258 |
+| L10 | +0.058 | -0.079 (sample noise) |
+| L16 | +0.011 | +0.003 |
+| all other 19 | within ±0.02 | within ±0.04 |
+
+Sum of LOO recoveries for {L0, L1, L23} = +3.78 nats out of the
++4.035 full gap = **93.7 %**.
+
+**Two methodological things this exposed:**
+
+1. **Errors compound.** LOO recovery > single-layer marginal for
+   every active layer (L0 +0.11, L1 +0.29, L23 +0.22 extra). The
+   single-layer marginal under-attributes the value of fixing a
+   given layer. **LOO is the right metric for sizing per-layer
+   intervention wins**, not the marginal.
+
+2. **Per-tile rMSE is a poor proxy for end-to-end PPL** past L0.
+   The integration-test rMSE study flagged L4 (rMSE 3.3x L12) and
+   L20/L23 (rMSE 2.2x L12) as next-worst after L0. The ablation
+   says only L23 matters; L4 and L20 are neutral. L1 -- which the
+   rMSE study didn't sample -- is actually the second-worst layer.
+   Next iteration of `analysis/integration_test_kv_pc.py` should
+   sweep all 24 layers, not the 7-layer subset.
+
+**Implication landed in
+`kv-cache-engine/findings/centroid_design_brief.md` Section 9:**
+Path C (hybrid per-layer mode select) with `turbo8` on {L0, L1,
+L23} and `turbo4` everywhere else. Predicted ~94 % C12 recovery at
+~12 % bit-rate impact. The KVCE-side designer can start from that
+write-up.
+
+Crash-recovery notes:
+- First full run died after `loo_L0` landed (~17:20). Salvaged
+  baseline + C_prenorm_full + all 24 single-layer rows + LOO L0
+  from the append-only `c11_per_layer_ablation_runs.jsonl`. Wrote
+  `analysis/c11_per_layer_ablation_resume.py` to read the file,
+  identify missing LOO layers, and run only those. Took 23 layers
+  x ~43 s = ~16 min, no other work re-run.
+- Rule added: every multi-hour sweep that writes an append-only
+  log gets a `_resume.py` sibling. Useful twice -- on crashes and
+  on incremental config additions.
+
+Stored artefacts:
+- `analysis/c11_per_layer_ablation.py` (full sweep harness)
+- `analysis/c11_per_layer_ablation_resume.py` (crash/incremental
+  recovery harness)
+- `analysis/c11_per_layer_ablation_runs.jsonl` (append-only per-run
+  rows; first 7 rows are from the n=4 smoke)
+- `analysis/c11_per_layer_ablation_stats.json` (final summary; n=16
+  baseline + full + 24 single + 24 LOO)
+- `analysis/c11_per_layer_ablation_stats.smoke.json` (preserved
+  smoke summary for reference)
+- `paper/figs/c11_per_layer_ablation.{pdf,png}` (two-panel: single
+  marginal cost + LOO recovery, log-PPL nats)
+- `analysis/c11_per_layer_ablation.log` (combined stdout from both
+  the original run and the resume)
+
+Decision: KVCE side now has a sized, evidence-backed design path
+to start the centroid pipeline from. APA side stops here on C11;
+re-open if the next-model ablation shows the active set isn't
+{L0, L1, L23}.
+
+---
+
 ## Claims ledger
 
 | # | Claim | Value | n | Source data | Status |
@@ -251,9 +346,19 @@ HellaSwag (n=250) running in background. ETA ~75 min.
 | L7 | C12 turbo4 noise floor alone costs ~50x PPL | PPL_C_prenorm / PPL_A = 49.99x (+5.64 bits/tok) | 64 chunks | same JSONL (configs A, C_prenorm) | single-seed |
 | L8 | Integrated chip pipeline costs ~249x PPL vs baseline | PPL_E / PPL_A = 248.84x (+7.95 bits/tok) | 64 chunks | same JSONL (configs A, E) | single-seed |
 | L9 | Prenorm bridge removes ~80 % of integrated PPL gap | E_prenorm / E = 0.204 | 64 chunks | same JSONL (configs E, E_prenorm) | single-seed |
+| L10 | L0 single-layer KVCE marginal cost (C_prenorm mode) | +2.761 nats log-PPL (PPL 333 vs 21.06) | 16 chunks | `analysis/c11_per_layer_ablation_stats.json` | single-seed |
+| L11 | L0 leave-one-out KVCE recovery (cross-layer compounding visible) | +2.869 nats (PPL 67.6 vs 1191) | 16 chunks | same | single-seed |
+| L12 | L1 LOO recovery (second-worst layer) | +0.653 nats (PPL 619.8 vs 1191) | 16 chunks | same | single-seed |
+| L13 | L23 LOO recovery (third-worst layer) | +0.258 nats (PPL 919.9 vs 1191) | 16 chunks | same | single-seed |
+| L14 | Sum of LOO recoveries for {L0, L1, L23} as fraction of full C12 gap | 3.78 / 4.035 = 93.7 % | 16 chunks | derived from same | derived |
+| L15 | Mid-network layers (L2-L22 excl. L10) LOO recovery individually | within ±0.04 nats | 16 chunks each | same | single-seed |
 
 L2/L3 will be re-measured with proper n + CI from the per-layer
 activation statistics computed inside the e2e harness.
+L10-L15 are n=16; bootstrap CIs not computed -- the +2.87 nat L0
+result is unambiguous, but the +0.04 nat individual mid-network
+deltas should be treated as within noise rather than as positive
+findings.
 
 ---
 

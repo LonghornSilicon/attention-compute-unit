@@ -43,6 +43,12 @@ from kvce_pool import kv_roundtrip
 # Globals
 # ---------------------------------------------------------------------------
 CURRENT_CONFIG: dict = {"mode": "A"}
+# If None: KVCE applies on every layer (the C11 default behaviour).
+# If a set of int layer indices: KVCE applies ONLY on those layers; on
+# every other layer the substitute falls back to mode A (FP16 dense)
+# regardless of CURRENT_CONFIG["mode"]. Used by the per-layer ablation
+# in analysis/c11_per_layer_ablation.py.
+KVCE_LAYERS: set | None = None
 KVCE_REF_PATH: str = os.environ.get(
     "KVCE_REF", "/home/chaithu/lhs/kv-cache-engine/sw/reference_model"
 )
@@ -68,6 +74,13 @@ def set_config(mode: str) -> None:
     if mode not in {"A", "B", "C", "C_prenorm", "E", "E_prenorm"}:
         raise ValueError(f"unknown mode {mode!r}")
     CURRENT_CONFIG["mode"] = mode
+
+
+def set_kvce_layers(layers: set | list | None) -> None:
+    """Restrict KVCE/PC routing to a layer subset (the rest fall back to
+    config A's fast path). Pass None to apply on every layer."""
+    global KVCE_LAYERS
+    KVCE_LAYERS = None if layers is None else set(int(l) for l in layers)
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +132,15 @@ def acu_kvce_attention(
     mode = CURRENT_CONFIG["mode"]
     base = mode.replace("_prenorm", "")
     kvce_mode = "prenorm" if mode.endswith("_prenorm") else "naive"
+
+    # Per-layer gate: if KVCE_LAYERS restricts the set and this layer is
+    # outside it, fall through to mode A (the dense FP16 fast path). The
+    # PC/KVCE machinery still applies on the listed layers exactly as
+    # configured. Used by the per-layer ablation.
+    if KVCE_LAYERS is not None:
+        layer_idx = getattr(module, "layer_idx", None)
+        if layer_idx is not None and int(layer_idx) not in KVCE_LAYERS:
+            base = "A"
 
     CALL_STATS["fwd_count"] += 1
     t_attn0 = time.time()

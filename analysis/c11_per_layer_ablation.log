@@ -1,0 +1,76 @@
+[setup] model=Qwen/Qwen2-0.5B  mode=C_prenorm  n_samples=16  seq_len=512
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:   0%|          | 1/290 [00:00<00:33,  8.68it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 1474.22it/s]
+[setup] ablating layers [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (298938 > 32768). Running this sequence through the model will result in indexing errors
+[setup] 16 chunks prepared
+
+[ref] baseline A (no KVCE anywhere)
+  PPL = 21.064   wall=1.4s
+
+[ref] C_prenorm on every layer
+  PPL = 1191.133   wall=67.0s
+
+[ablate] single-layer: KVCE on one layer, identity elsewhere
+  L 0: PPL= 332.988  delta_nats=+2.7605  wall=3.4s
+  L 1: PPL=  30.249  delta_nats=+0.3619  wall=3.3s
+  L 2: PPL=  21.531  delta_nats=+0.0219  wall=3.4s
+  L 3: PPL=  21.534  delta_nats=+0.0221  wall=3.4s
+  L 4: PPL=  21.221  delta_nats=+0.0074  wall=3.3s
+  L 5: PPL=  21.227  delta_nats=+0.0077  wall=3.5s
+  L 6: PPL=  21.452  delta_nats=+0.0183  wall=3.4s
+  L 7: PPL=  21.135  delta_nats=+0.0034  wall=3.5s
+  L 8: PPL=  21.274  delta_nats=+0.0099  wall=3.3s
+  L 9: PPL=  21.137  delta_nats=+0.0035  wall=3.3s
+  L10: PPL=  22.333  delta_nats=+0.0585  wall=3.3s
+  L11: PPL=  21.164  delta_nats=+0.0047  wall=3.6s
+  L12: PPL=  21.162  delta_nats=+0.0047  wall=3.3s
+  L13: PPL=  21.234  delta_nats=+0.0081  wall=3.3s
+  L14: PPL=  21.226  delta_nats=+0.0077  wall=3.4s
+  L15: PPL=  21.172  delta_nats=+0.0051  wall=3.5s
+  L16: PPL=  21.294  delta_nats=+0.0109  wall=3.3s
+  L17: PPL=  21.210  delta_nats=+0.0069  wall=3.4s
+  L18: PPL=  21.169  delta_nats=+0.0050  wall=3.3s
+  L19: PPL=  21.226  delta_nats=+0.0077  wall=3.4s
+  L20: PPL=  21.166  delta_nats=+0.0048  wall=3.3s
+  L21: PPL=  21.165  delta_nats=+0.0048  wall=3.3s
+  L22: PPL=  21.166  delta_nats=+0.0049  wall=3.5s
+  L23: PPL=  21.955  delta_nats=+0.0414  wall=3.3s
+
+[ablate] leave-one-out: KVCE everywhere EXCEPT one layer
+  L 0: PPL=  67.600  recovery_nats=+2.8690  wall=60.8s
+no baseline_A with tokens=8176 found in any hour-group
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[resume] 27 rows at n_samples=16, 27 distinct labels
+[resume] baseline_A PPL=21.064
+[resume] full      PPL=1191.133
+[resume] single-layer rows: 24/24  ([0, 1, 2, 3, 4]..[23])
+[resume] loo rows: 1  already done: [0]
+Loading weights:   0%|          | 0/290 [00:00<?, ?it/s]Loading weights:  51%|█████     | 147/290 [00:00<00:00, 1452.53it/s]Loading weights: 100%|██████████| 290/290 [00:00<00:00, 1645.43it/s]
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (298938 > 32768). Running this sequence through the model will result in indexing errors
+[setup] model loaded, n_layers=24, 16 chunks
+[resume] LOO layers to run: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+  L 1: PPL= 619.832  recovery_nats=+0.6532  wall=43.6s
+  L 2: PPL=1208.369  recovery_nats=-0.0144  wall=41.6s
+  L 3: PPL=1199.643  recovery_nats=-0.0071  wall=42.1s
+  L 4: PPL=1243.237  recovery_nats=-0.0428  wall=41.9s
+  L 5: PPL=1181.746  recovery_nats=+0.0079  wall=42.4s
+  L 6: PPL=1202.644  recovery_nats=-0.0096  wall=42.3s
+  L 7: PPL=1231.325  recovery_nats=-0.0332  wall=42.0s
+  L 8: PPL=1193.567  recovery_nats=-0.0020  wall=42.5s
+  L 9: PPL=1208.468  recovery_nats=-0.0144  wall=42.5s
+  L10: PPL=1289.173  recovery_nats=-0.0791  wall=42.7s
+  L11: PPL=1181.313  recovery_nats=+0.0083  wall=42.5s
+  L12: PPL=1195.361  recovery_nats=-0.0035  wall=42.3s
+  L13: PPL=1221.335  recovery_nats=-0.0250  wall=42.9s
+  L14: PPL=1206.080  recovery_nats=-0.0125  wall=42.7s
+  L15: PPL=1203.191  recovery_nats=-0.0101  wall=42.7s
+  L16: PPL=1186.958  recovery_nats=+0.0035  wall=42.3s
+  L17: PPL=1198.783  recovery_nats=-0.0064  wall=42.5s
+  L18: PPL=1200.245  recovery_nats=-0.0076  wall=42.3s
+  L19: PPL=1206.252  recovery_nats=-0.0126  wall=42.1s
+  L20: PPL=1194.556  recovery_nats=-0.0029  wall=42.2s
+  L21: PPL=1179.245  recovery_nats=+0.0100  wall=42.3s
+  L22: PPL=1190.436  recovery_nats=+0.0006  wall=42.3s
+  L23: PPL= 919.925  recovery_nats=+0.2584  wall=42.2s
+[done] wrote /home/chaithu/lhs/adaptive-precision-attention/analysis/c11_per_layer_ablation_stats.json

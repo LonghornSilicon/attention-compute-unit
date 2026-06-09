@@ -173,6 +173,70 @@ def fig_hellaswag():
     plt.close(fig)
 
 
+def fig_per_layer_ablation():
+    path = REPO_ROOT / "analysis" / "c11_per_layer_ablation_stats.json"
+    if not path.exists():
+        print(f"[skip] {path} not found")
+        return
+    data = json.loads(path.read_text())
+    n_layers = int(data["n_layers"])
+    ppl_A = float(data["ppl_baseline_A"])
+    ppl_full = float(data["ppl_full"])
+    single = {int(k): float(v) for k, v in data["single_layer_ppl"].items()}
+    loo = {int(k): float(v) for k, v in data.get("loo_ppl", {}).items()}
+
+    layers = sorted(single.keys())
+    single_nats = np.array([math.log(single[L] / ppl_A) for L in layers])
+    loo_nats = np.array([math.log(ppl_full / loo[L]) for L in layers]) if loo else None
+
+    fig, axes = plt.subplots(2 if loo else 1, 1, figsize=(7.0, 5.6 if loo else 3.0),
+                              sharex=True)
+    if not loo:
+        axes = [axes]
+
+    # Single-layer marginal cost (lower is better)
+    ax = axes[0]
+    bars = ax.bar(layers, single_nats, color="#d7191c", edgecolor="black",
+                  linewidth=0.4, width=0.78)
+    ax.set_ylabel("log(PPL/baseline) [nats]\n(marginal cost of KVCE on this layer)")
+    ax.set_title(
+        f"Per-layer KVCE cost on {data['model']}  "
+        f"(mode={data['mode']}, n={data['n_samples']} chunks, "
+        f"PPL_A={ppl_A:.2f}, PPL_full={ppl_full:.1f})",
+        fontsize=9,
+    )
+    ax.axhline(0, color="black", linewidth=0.4)
+    ax.grid(axis="y", alpha=0.25, linewidth=0.4)
+    for L, v in zip(layers, single_nats):
+        if abs(v) > 0.5 or L in (0, n_layers - 1):
+            ax.text(L, v, f"{v:+.2f}", ha="center", va="bottom", fontsize=7)
+    ax.set_xticks(layers)
+
+    # Leave-one-out recovery (higher = removing this layer helps more)
+    if loo is not None:
+        ax = axes[1]
+        ax.bar(layers, loo_nats, color="#2b8cbe", edgecolor="black",
+               linewidth=0.4, width=0.78)
+        ax.set_ylabel("log(PPL_full/PPL_loo) [nats]\n(recovery from removing layer L)")
+        ax.set_xlabel("Layer index")
+        ax.axhline(0, color="black", linewidth=0.4)
+        ax.grid(axis="y", alpha=0.25, linewidth=0.4)
+        for L, v in zip(layers, loo_nats):
+            if abs(v) > 0.5 or L in (0, n_layers - 1):
+                ax.text(L, v, f"{v:+.2f}", ha="center", va="bottom", fontsize=7)
+        ax.set_xticks(layers)
+    else:
+        ax.set_xlabel("Layer index")
+
+    fig.tight_layout()
+    out = FIG_DIR / "c11_per_layer_ablation.pdf"
+    fig.savefig(out)
+    fig.savefig(out.with_suffix(".png"), dpi=160)
+    print(f"[ok] {out}")
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     fig_ppl()
     fig_hellaswag()
+    fig_per_layer_ablation()
