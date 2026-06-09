@@ -74,7 +74,25 @@ import numpy as np
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-KVCE_REF = Path("/home/shadeform/kv-cache-engine/sw/reference_model")
+
+def _find_kvce_ref() -> Path:
+    env = os.environ.get("KVCE_REF")
+    if env:
+        return Path(env).expanduser().resolve()
+    candidates = [
+        REPO_ROOT.parent / "kv-cache-engine" / "sw" / "reference_model",
+        Path("/home/shadeform/kv-cache-engine/sw/reference_model"),
+    ]
+    for c in candidates:
+        if (c / "kv_cache_engine_ref.py").exists():
+            return c.resolve()
+    raise SystemExit(
+        "Could not locate kv-cache-engine reference model.\n"
+        "Set $KVCE_REF to .../kv-cache-engine/sw/reference_model, "
+        "or clone kv-cache-engine as a sibling of this repo."
+    )
+
+KVCE_REF = _find_kvce_ref()
 sys.path.insert(0, str(KVCE_REF))
 sys.path.insert(0, str(REPO_ROOT / "sw" / "reference_model"))
 

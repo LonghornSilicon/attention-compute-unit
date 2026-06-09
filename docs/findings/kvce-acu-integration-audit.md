@@ -193,11 +193,16 @@ against the KV cache quantization noise floor (0.36 rMSE).
 
 ## Reproducing
 
+Clone `kv-cache-engine` as a sibling of this repo (the integration test
+auto-discovers it there), or export `KVCE_REF` to point at
+`.../kv-cache-engine/sw/reference_model`.
+
 ```sh
 # Confirm KVCE reconstruction quality (post-fix):
+KVCE_REF=${KVCE_REF:-../kv-cache-engine/sw/reference_model}
 python3 -c "
-import sys, numpy as np
-sys.path.insert(0, '/home/shadeform/kv-cache-engine/sw/reference_model')
+import sys, numpy as np, os
+sys.path.insert(0, os.environ['KVCE_REF'])
 from kv_cache_engine_ref import KVCacheEngine, KVCacheEngineInfo
 e = KVCacheEngine(KVCacheEngineInfo(vector_dim=64))
 rng = np.random.default_rng(0)
@@ -209,7 +214,6 @@ print(f'K cosine sim: {float(v@kh/(np.linalg.norm(v)*np.linalg.norm(kh))):.3f}')
 # Expect cosine ~ 0.975
 
 # Full 7-layer integration test (~75s + model load):
-cd /home/shadeform/adaptive-precision-attention
 python3 analysis/integration_test_kv_pc.py \
     --seq-len 512 --layers 0,4,8,12,16,20,23 --prompts 1
 # Expect: path-B rMSE ~ 2e-4, paths C/D/E rMSE ~ 0.36
