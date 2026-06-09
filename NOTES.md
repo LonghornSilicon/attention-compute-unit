@@ -160,6 +160,84 @@ Stored artefacts:
 
 ---
 
+## 2026-06-08 — Full sweep (n=64 chunks, 32,704 prediction tokens): C11 measured
+
+Re-ran the harness at n=64 non-overlapping 512-token chunks of WikiText-2
+test. PC FP16% = 0.00 % across all PC-using configs (B, E, E_prenorm)
+except E at 0.14 % — matches the per-tile audit's finding that lossy S
+nudges very few tiles from INT8 to FP16. Wall: 13.7 min total.
+
+| Config       | PPL pooled | PPL median | Wall (s) | KVCE (s) | Notes                                       |
+|--------------|-----------:|-----------:|---------:|---------:|---------------------------------------------|
+| A baseline   |      17.56 |      18.87 |      2.4 |      0.0 | sdpa-equivalent, ground truth               |
+| B PC only    |      17.58 |      18.92 |     15.5 |      0.0 | per-tile INT8 SV on true V -- harmless      |
+| C KVCE naive |   3,642.10 |   3,582.34 |    217.8 |    189.8 | as-is bridge -- C1 fires                    |
+| C_prenorm    |     877.88 |   1,024.99 |    192.5 |    163.0 | C1 removed; turbo4 noise remains            |
+| E integrated |   4,368.83 |   4,179.28 |    203.7 |    145.7 | as-is chip pipeline                         |
+| E_prenorm    |     892.11 |   1,053.17 |    204.8 |    146.1 | chip pipeline minus C1                      |
+
+**Decomposition (PPL factors over baseline A):**
+
+| Source                                            | Factor      | Cost in bits/tok       |
+|---------------------------------------------------|------------:|-----------------------:|
+| PC routing on full-precision V (B / A)            |    **1.001x** | +0.001                |
+| C12 turbo4 noise floor alone (C_prenorm / A)      |   **49.99x** | +5.64                  |
+| C1 Q4.12 clip alone (C / C_prenorm)               |    **4.15x** | +2.05                  |
+| C12 + PC on lossy V (E_prenorm / A)               |   **50.81x** | +5.66                  |
+| C1 inside the chip pipeline (E / E_prenorm)       |    **4.90x** | +2.29                  |
+| Full integrated pipeline (E / A)                  |  **248.84x** | +7.95                  |
+
+Findings:
+
+1. **The chip's PC routing is end-to-end safe.** B vs A is 17.577 vs
+   17.557 -- a 0.001x ratio, well inside chunk-to-chunk noise (median
+   chunk PPL spans 5.4 to 35.5 across the 64 chunks). PC FP16 % on B
+   is 0.00 %, i.e. 100 % INT8 routing. Independent of KVCE.
+
+2. **C1 (Q4.12 input clip on real activations) is real and large.**
+   In isolation: PPL_C / PPL_C_prenorm = 4.15x (+2.05 bits/tok). In
+   the integrated pipeline: PPL_E / PPL_E_prenorm = 4.90x (+2.29 bits/tok).
+   The pre-norm wrapper (analysis/kvce_pool.py mode="prenorm") removes
+   it entirely -- so a per-vector scale-then-quantize bridge between
+   ACU's k_proj output and KVCE's Q4.12 input is sufficient to close
+   C1 in software. The chip would need this as either an ACU output
+   sub-block (preferred per the conflict register's resolution path)
+   or a KVCE input sub-block.
+
+3. **C12 (turbo4 noise floor) is the dominant remaining cost.** Even
+   with C1 removed, KVCE round-trip alone (C_prenorm) gives PPL 878 vs
+   baseline 17.6 -- a 50x perplexity gap (+5.64 bits/tok). This is
+   the intrinsic cost of 3-bit PQ + 1-bit QJL on K and 3-bit PQ on V
+   at this model scale. Higher-precision modes (turbo8/turbo16) would
+   shrink this, at the cost of the 3.6 to 5x compression ratio.
+
+4. **PC routing inside the integrated path is approximately free even
+   under lossy V.** E_prenorm / C_prenorm = 1.016x. The "PC adds
+   nothing when KVCE noise dominates" prediction from the audit holds
+   at the model-output level too -- but the safety verdict is what
+   matters: PC routing does not make end-to-end PPL meaningfully
+   worse than the KVCE-only baseline.
+
+PC FP16% on E in this run is 0.14 % (47 out of ~33,800 tiles). The
+audit measured 0.18 % at n=2,744 tiles. Same order, same direction.
+
+Stored artefacts:
+- `analysis/c11_wikitext_ppl_runs.jsonl` (now has the n=2 smoke +
+  n=64 full rows; latest row per config is the full one)
+- `analysis/c11_wikitext_ppl_summary_n64.json`
+- `paper/figs/c11_ppl_by_config.{pdf,png}` (regenerable via
+  `python analysis/c11_make_figs.py`)
+
+Decision: with C1 isolation result in hand, fix order is clear ->
+  (1) close C1 in the spec (per-vector pre-norm bridge),
+  (2) re-measure with prenorm baked in,
+  (3) decide on C12 (ship turbo4 + measured PPL hit, or escalate to a
+      higher-precision mode).
+
+HellaSwag (n=250) running in background. ETA ~75 min.
+
+---
+
 ## Claims ledger
 
 | # | Claim | Value | n | Source data | Status |
@@ -167,6 +245,12 @@ Stored artefacts:
 | L1 | Integration test reproduces published numbers within rounding | median rMSE_E = 0.3641 vs audit 0.3631 | 2,744 tiles | `analysis/integration_test_kv_pc_stats.json` (Jun 8 run) | single-seed confirmed |
 | L2 | KVCE naive-mode cosine drops to 0.417 when input \|max\| exits Q4.12 range | cos = 0.417 (\|K\|~50) vs 0.975 (\|K\|~1) | 1 vec | this notebook, "KVCE pool" entry | smoke-only, n=1, not enough for a paper claim |
 | L3 | Prenorm restores cosine to the in-range value | cos = 0.975 at \|K\|~50 | 1 vec | same | smoke-only, n=1 |
+| L4 | Qwen2-0.5B WikiText-2 baseline (sdpa-equivalent via mode A) | PPL = 17.56 | 64 chunks (32,704 toks) | `analysis/c11_wikitext_ppl_runs.jsonl` (config A, latest row) | single-seed; bootstrap CI in figure |
+| L5 | PC routing alone is harmless end-to-end | B/A PPL ratio = 1.001x (+0.001 bits/tok) | 64 chunks | same JSONL (configs A, B) | single-seed |
+| L6 | C1 Q4.12 clip alone costs ~4.15x PPL on real activations | PPL_C / PPL_C_prenorm = 4.15x (+2.05 bits/tok) | 64 chunks | same JSONL (configs C, C_prenorm) | single-seed |
+| L7 | C12 turbo4 noise floor alone costs ~50x PPL | PPL_C_prenorm / PPL_A = 49.99x (+5.64 bits/tok) | 64 chunks | same JSONL (configs A, C_prenorm) | single-seed |
+| L8 | Integrated chip pipeline costs ~249x PPL vs baseline | PPL_E / PPL_A = 248.84x (+7.95 bits/tok) | 64 chunks | same JSONL (configs A, E) | single-seed |
+| L9 | Prenorm bridge removes ~80 % of integrated PPL gap | E_prenorm / E = 0.204 | 64 chunks | same JSONL (configs E, E_prenorm) | single-seed |
 
 L2/L3 will be re-measured with proper n + CI from the per-layer
 activation statistics computed inside the e2e harness.
