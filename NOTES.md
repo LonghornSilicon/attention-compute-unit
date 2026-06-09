@@ -92,6 +92,74 @@ runtime bottleneck.
 
 ---
 
+## 2026-06-08 — Smoke test (n=2 chunks): bug found and fixed in the patched-attention path
+
+Built `analysis/acu_kvce_attention.py` (flash-attention-style streaming
+attention with per-tile PC routing and optional KVCE round-trip) and
+`analysis/c11_wikitext_ppl.py` (WikiText-2 PPL sweep harness). Registered
+the substitute under `ALL_ATTENTION_FUNCTIONS["acu_kvce"]` and loaded
+Qwen2-0.5B with `attn_implementation="acu_kvce"`.
+
+**Bug found:** first config-A smoke gave PPL = 1.07 — impossibly low.
+HF passes `attention_mask=None` to custom attention impls for causal
+decoder LMs (the contract is "you know it's causal, build the mask
+yourself" — same as SDPA's `is_causal=True`). My substitute wasn't
+applying a causal mask, so every position attended to future tokens
+and the LM became trivially predictive. Fixed by constructing the
+strict-upper-triangular `-inf` mask inside the substitute and applying
+it on both the A fast path and the streaming path. After the fix,
+config A reproduces PPL exactly:
+
+| Method                                                     | chunk 0 PPL |
+|------------------------------------------------------------|------------:|
+| Default `attn_implementation` (sdpa) via HF labels loss    | 11.654      |
+| My `acu_kvce` config A, post-fix                           | 11.654      |
+
+Rule added: any custom HF attention impl must apply its own causal mask
+when `attention_mask` is None on a causal-LM forward.
+
+**Smoke results (n=2 chunks, seq_len=512, 1022 prediction tokens):**
+
+| Config        | PPL (pooled) | PPL (median) | Wall  | PC FP16% |
+|---------------|-------------:|-------------:|------:|---------:|
+| A baseline    | 15.0         | 15.5         | 0.6s  | n/a      |
+| B (PC only)   | 15.1         | 15.5         | 0.6s  | 0.00 %   |
+| C (KVCE naive)| 3,998        | 4,433        | 6.5s  | n/a      |
+| C_prenorm     | 545          | 695          | 5.5s  | n/a      |
+| E (naive)     | 6,162        | 6,787        | 6.2s  | 0.15 %   |
+| E_prenorm     | 569          | 741          | 6.0s  | 0.00 %   |
+
+Decomposition:
+- B vs A (15.1 vs 15.0): PC routing alone is **harmless**. Matches the
+  per-tile finding that 99.8 % of tiles route INT8 and per-tile INT8
+  noise is rMSE ~2e-4.
+- C vs A (3998 vs 15): KVCE alone with naive Q4.12 is **catastrophic**
+  (~265x worse PPL). Direct end-to-end confirmation of C1 (Q4.12 clip
+  vs real activation magnitudes).
+- C_prenorm vs C (545 vs 3998): isolating C1 alone wins ~7x. So C1 is
+  a major contributor, but ~545 PPL is still ~36x baseline — KVCE's
+  intrinsic `turbo4` quantization noise (the C12 noise floor) is doing
+  most of the remaining damage.
+- E vs C (6162 vs 3998), E_prenorm vs C_prenorm (569 vs 545): PC
+  routing in the integrated path doesn't materially change the picture
+  when KVCE noise dominates. Consistent with the per-tile audit's
+  observation that almost no tile escapes INT8 routing under lossy V.
+
+n=2 is way too small for a confident number; scaling to 64 chunks next
+(~13 min wall on this host).
+
+Wall-time projection (64 chunks):
+- KVCE configs (C/C_prenorm/E/E_prenorm): ~3s/chunk -> ~3 min each
+- Non-KVCE (A/B):                          ~0.3s/chunk -> ~20s each
+- Total:                                   ~13 min
+
+Stored artefacts:
+- `analysis/c11_wikitext_ppl_runs.jsonl` (append-only, smoke rows)
+- `analysis/c11_wikitext_ppl_summary.json` (last run summary)
+- `analysis/acu_kvce_attention.py`, `analysis/c11_wikitext_ppl.py`
+
+---
+
 ## Claims ledger
 
 | # | Claim | Value | n | Source data | Status |
