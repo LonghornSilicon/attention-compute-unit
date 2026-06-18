@@ -68,6 +68,17 @@ CAPTURE_BUFFER: dict = {}
 TILE = 64
 PC_THRESHOLD = 10  # max * N > 10 * sum -> FP16
 
+# DWB per-token routing (the integration's reason for existing).
+# CURRENT_BITS: optional int array of DWB tier labels {2,4,8,16}, one per
+# sequence position, produced host-side by the DWBController from the model's
+# forward-pass signals. When None (default), KVCE routes uniformly (the C11
+# behaviour). When set, every C/E-mode KVCE round-trip dispatches each token
+# to its tier (16=FP16 bypass, 8=turbo8, 4=turbo4, 2=turbo) -- see
+# kvce_pool.TIER_PQBITS. Positions beyond len(CURRENT_BITS) (e.g. the scored
+# continuation tokens) fall back to DEFAULT_TAIL_TIER.
+CURRENT_BITS: "Optional[np.ndarray]" = None
+DEFAULT_TAIL_TIER = 4  # turbo4 (the chip default tier) for unrouted tail tokens
+
 # Per-layer / per-forward telemetry, reset by the harness.
 CALL_STATS: dict = {
     "fwd_count": 0,
@@ -102,6 +113,25 @@ def set_centroid_tables(path: str | None) -> None:
     every layer. The pool rebuilds on the next forward."""
     global CENTROID_TABLES_PATH
     CENTROID_TABLES_PATH = path
+
+
+def set_token_bits(bits) -> None:
+    """Set the per-token DWB tier array for the next forward pass(es), or None
+    to revert to uniform KVCE routing. `bits` is a 1-D int array of {2,4,8,16}
+    tier labels indexed by sequence position. The DWB-routed full test calls
+    this after the controller predicts tiers from the FP16 signal pass."""
+    global CURRENT_BITS
+    CURRENT_BITS = None if bits is None else np.asarray(bits, dtype=np.int64)
+
+
+def tier_avg_bits(bits) -> float:
+    """Mean of DWB tier labels (the avg-bits/token metric used in the DWB
+    papers and required by the integration plan alongside acc_norm). This is
+    the controller's nominal tier average; KVCE's effective stored bits per
+    tier differ (see kvce_pool.TIER_PQBITS) but the tier label is the
+    comparable cross-method number."""
+    b = np.asarray(bits)
+    return float(b.mean()) if b.size else 0.0
 
 
 def set_capture_mode(on: bool) -> None:
@@ -151,10 +181,18 @@ def _repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 def _kvce_roundtrip_tensor(
     K: torch.Tensor, V: torch.Tensor, kvce_mode: str, layer_idx: int = -1,
+    token_bits=None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """K, V: [B, Hkv, N, D] fp16/bf16/fp32. Round-tripped through KVCE.
     layer_idx selects the per-layer centroid engine (when a centroid
     table is set); -1 = chip default.
+
+    token_bits: optional 1-D int array of DWB tier labels {2,4,8,16}, one per
+    sequence position (length N). When given, each token is routed to its
+    tier instead of uniform codec application. The array is tiled across the
+    B*Hkv (batch, kv-head) groups so it aligns with the flattened [B*Hkv*N, D]
+    row order; per-head WHT (TQ-H1) is preserved because each row is still one
+    head's 64-dim vector.
 
     Side-effect: when CAPTURE_MODE is on, append post-rotation coords
     for this call to CAPTURE_BUFFER[layer_idx]."""
@@ -162,11 +200,23 @@ def _kvce_roundtrip_tensor(
     device, dtype = K.device, K.dtype
     K_cpu = K.detach().float().cpu().contiguous().view(-1, D).numpy()
     V_cpu = V.detach().float().cpu().contiguous().view(-1, D).numpy()
+
+    bits = None
+    if token_bits is not None:
+        tb = np.asarray(token_bits, dtype=np.int64)
+        if tb.shape[0] < N:  # pad continuation/tail positions
+            tb = np.concatenate([tb, np.full(N - tb.shape[0], DEFAULT_TAIL_TIER,
+                                             dtype=np.int64)])
+        elif tb.shape[0] > N:
+            tb = tb[:N]
+        bits = np.tile(tb, B * H)  # align to flattened [(B*H)*N] row order
+
     K_hat, V_hat, cap = kv_roundtrip(
         KVCE_REF_PATH, K_cpu, V_cpu, mode=kvce_mode,
         layer_idx=layer_idx,
         centroid_tables_path=CENTROID_TABLES_PATH,
         capture=CAPTURE_MODE,
+        bits=bits,
     )
     if CAPTURE_MODE and cap is not None:
         bkt = CAPTURE_BUFFER.setdefault(int(layer_idx), {"K": [], "V": []})
@@ -242,6 +292,7 @@ def acu_kvce_attention(
         layer_idx = int(layer_idx) if layer_idx is not None else -1
         K_used, V_used = _kvce_roundtrip_tensor(
             key, value, kvce_mode=kvce_mode, layer_idx=layer_idx,
+            token_bits=CURRENT_BITS,
         )
         CALL_STATS["kvce_ms"] += (time.time() - t_kv0) * 1000.0
     else:
