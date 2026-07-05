@@ -338,14 +338,28 @@ def acu_kvce_attention(
             if mask_f is not None:
                 S = S + mask_f[:, :, q_lo:q_hi, k_lo:k_hi]
 
-            # PC decision per (B, Hq) tile, on int8-quantized S.
+            # PC decision per (B, Hq) tile, on int8-quantized S. The ratio test
+            # max(|S|)*N > THRESHOLD*sum(|S|) is computed over the VALID (unmasked)
+            # scores only: S carries the causal -inf, and feeding it in makes
+            # S_abs_max=inf -> S/inf=nan on the masked cells -> tile_max/tile_sum=nan
+            # -> the comparison is always False, forcing every tile to INT8 (a
+            # silent 100%-INT8 bug). Mask to finite before quantizing, and use the
+            # per-tile valid-cell count for N. (Masked cells get P=0 in softmax
+            # regardless, so the OUTPUT was always correct; only the routing
+            # fraction was wrong.) See analysis/c20_cq_apa_e2e.py.
             if use_pc:
-                S_abs_max = S.abs().amax(dim=(-1, -2), keepdim=True).clamp(min=1e-12)
-                S_q = torch.round((S / S_abs_max) * 127.0).clamp(-127, 127)
+                finite = torch.isfinite(S)
+                S_valid = torch.where(finite, S, torch.zeros_like(S))
+                S_abs_max = S_valid.abs().amax(dim=(-1, -2), keepdim=True).clamp(min=1e-12)
+                S_q = torch.where(
+                    finite,
+                    torch.round((S_valid / S_abs_max) * 127.0).clamp(-127, 127),
+                    torch.zeros_like(S),
+                )
                 S_q_abs = S_q.abs()
-                tile_max = S_q_abs.amax(dim=(-1, -2))    # [B, Hq]
-                tile_sum = S_q_abs.sum(dim=(-1, -2))     # [B, Hq]
-                tile_n = float(Bq * Bk)
+                tile_max = S_q_abs.amax(dim=(-1, -2))                       # [B, Hq]
+                tile_sum = S_q_abs.sum(dim=(-1, -2))                        # [B, Hq]
+                tile_n = finite.sum(dim=(-1, -2)).to(S.dtype).clamp(min=1)  # [B, Hq] valid cells
                 d_fp16 = (tile_max * tile_n) > (PC_THRESHOLD * tile_sum)
                 CALL_STATS["pc_fp16_tiles"] += int(d_fp16.sum().item())
                 CALL_STATS["pc_total_tiles"] += int(d_fp16.numel())
