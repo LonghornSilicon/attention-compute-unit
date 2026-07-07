@@ -109,12 +109,12 @@ TSMC University Program (tape-out target Summer 2027):
       \item Precision Controller --- ratio gate on raw scores
       \item MAC Array --- INT8 and FP16 dispatched matmul
       \end{itemize}
-\item \textbf{KV Cache Engine} --- on-chip SRAM / 3T gain-cell eDRAM with
+\item \textbf{KV Cache Engine} --- on-die SRAM (spilling to off-chip LPDDR5X) with
       ChannelQuant compression on writes, decompression on reads.
 \item \textbf{Token Importance Unit} --- per-token attention-weight
       accumulator driving mixed-precision retention.
-\item \textbf{Memory Hierarchy Controller} --- L1 SRAM / L2 3T gain-cell eDRAM /
-      off-chip LPDDR5 routing.
+\item \textbf{Memory Hierarchy Controller} --- routes 0.8 MB on-die SRAM /
+      off-chip LPDDR5X, direct (no separate eDRAM tier).
 \end{enumerate}
 
 For compiler co-design, block 1 (the ACU and its two sub-components,

@@ -17,7 +17,7 @@ TSMC University Program (tape-out target Summer 2027):
    complete**: RTL frozen, 253/253 tests pass, Sky130 end-to-end PnR
    signed off (DRC/LVS/antenna/IR-drop clean), ASAP7 area projection,
    public paper. Repo: <https://github.com/LonghornSilicon/adaptive-precision-attention>.
-2. **KV Cache Engine** — on-chip SRAM / 3T gain-cell eDRAM with
+2. **KV Cache Engine** — on-die SRAM (spilling to off-chip LPDDR5X) with
    ChannelQuant compression on writes / decompression on reads
    (per-channel INT4 keys / per-token INT4 values + FP16 outlier lane).
    Goal: ~3.8× more KV context in the same LPDDR5 bandwidth. *RTL complete
@@ -25,9 +25,8 @@ TSMC University Program (tape-out target Summer 2027):
 3. **Token Importance Unit** — per-token attention-weight accumulator
    driving keep/demote/evict decisions for mixed-precision KV
    retention. *Not yet implemented.*
-4. **Memory Hierarchy Controller** — L1 SRAM / L2 3T gain-cell eDRAM / off-chip
-   LPDDR5 routing with SHIELD-style refresh disable for the QO buffer
-   (~35% eDRAM energy reduction). *Not yet implemented.*
+4. **Memory Hierarchy Controller** — routes 0.8 MB on-die SRAM ↔ off-chip
+   LPDDR5X, direct (no separate eDRAM tier). *Not yet implemented.*
 
 For this meeting, the precision controller (block #1) is what we can
 commit to a stable interface for.

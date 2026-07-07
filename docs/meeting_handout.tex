@@ -66,14 +66,14 @@ University Program (tape-out target Summer 2027):
   precision per tile from a single-cycle ratio check.\\
   \textbf{Status:} RTL frozen, 253 / 253 tests pass, Sky130 PnR signed off
   (DRC / LVS / antenna / IR-drop clean), ASAP7 area projection, public paper.
-\item \textbf{KV Cache Engine} --- on-chip SRAM / 3T gain-cell eDRAM with
+\item \textbf{KV Cache Engine} --- on-die SRAM (spilling to off-chip LPDDR5X) with
   ChannelQuant compression (per-channel INT4 keys / per-token INT4 values +
   FP16 outlier lane). \emph{RTL complete through Sky130 sign-off.}
 \item \textbf{Token Importance Unit} --- per-token attention-weight
   accumulator driving keep / demote / evict for mixed-precision KV
   retention. \emph{Not yet implemented.}
-\item \textbf{Memory Hierarchy Controller} --- L1 SRAM, L2 3T gain-cell eDRAM, off-chip
-  LPDDR5 with SHIELD-style refresh disable on short-lived data.
+\item \textbf{Memory Hierarchy Controller} --- routes 0.8 MB on-die SRAM
+  $\leftrightarrow$ off-chip LPDDR5X, direct (no separate eDRAM tier).
   \emph{Not yet implemented.}
 \end{enumerate}
 For this meeting, the precision controller (block 1) is what we can commit

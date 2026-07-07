@@ -90,15 +90,15 @@ so you can download them from the run page on GitHub.
 
 The bottom of `ci.yml` has commented-out stubs for the rest of the chip:
 
-- **KV Cache Engine** — quantizer / dequantizer pipeline + on-chip
-  SRAM/eDRAM controller. Verification will look similar to the
+- **KV Cache Engine** — ChannelQuant compress / decompress pipeline + on-die
+  SRAM controller. Verification will look similar to the
   precision controller TBs: a directed TB + a replay TB driving real
   KV traces.
 - **Token Importance Unit** — accumulator array tracking attention
   weight per cached token. TB drives synthetic attention rows;
   reference is a simple Python accumulator.
-- **Memory Hierarchy Controller** — L1 SRAM / L2 eDRAM / off-chip
-  DRAM routing logic. TB needs a workload trace (sequence of accesses)
+- **Memory Hierarchy Controller** — on-die SRAM / off-chip LPDDR5X
+  routing logic (direct, no eDRAM tier). TB needs a workload trace (sequence of accesses)
   and a reference cache model.
 - **Full-chip integration** — composes the above + the ACU (precision
   controller). Runs as a `needs:`-gated job that fires only when all

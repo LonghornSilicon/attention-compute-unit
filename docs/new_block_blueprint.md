@@ -330,9 +330,9 @@ points isn't always enough to see the right abstraction.
 
 Per the LonghornSilicon architecture notes, the KV Cache Engine is:
 
-- On-chip SRAM / 3T gain-cell eDRAM (bulk KV store)
+- 0.8 MB on-die SRAM (KV store), spilling to off-chip LPDDR5X (no eDRAM tier)
 - ChannelQuant compression pipeline on writes, decompression on reads
-- Goal: ~3.8× more KV context in the same LPDDR5 bandwidth
+- Goal: ~3.8× more KV context in the same LPDDR5X bandwidth
 
 Specific deviations from the precision controller template you'll
 likely need:
@@ -364,8 +364,8 @@ foundry's memory compiler will provide actual SRAM macros.
 **ChannelQuant** (per-channel INT4 keys, grouped G=128 / per-token INT4
 values + FP16 outlier-channel lane), and the block's RTL is already complete
 through Sky130 sign-off in the `kv-cache-engine` repo. The Memory Hierarchy
-Controller still uses the SHIELD refresh-disable trick for the L2 3T gain-cell
-eDRAM.
+Controller routes 0.8 MB on-die SRAM ↔ off-chip LPDDR5X directly — the current
+design has no separate eDRAM tier.
 
 ---
 

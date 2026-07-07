@@ -140,12 +140,11 @@ is in flight:
 │                            ┌──────────────┴──────────────┐             │
 │                            ▼                             ▼             │
 │              ┌─────────────────────────┐   ┌─────────────────────┐    │
-│              │  Memory Hierarchy Ctrl. │   │  Off-chip LPDDR5    │    │
-│              │                         │◀─▶│  (cold KV + model   │    │
-│              │  L1 SRAM (hottest KV)   │   │   weights)          │    │
-│              │  L2 3T gain-cell eDRAM  │   └─────────────────────┘    │
-│              │  (bulk on-chip KV)      │                                │
-│              │  SHIELD refresh control │                                │
+│              │  Memory Hierarchy Ctrl. │   │  Off-chip LPDDR5X   │    │
+│              │  (block 4)              │◀─▶│  (cold KV + model   │    │
+│              │  0.8 MB on-die SRAM     │   │   weights)          │    │
+│              │  + off-chip LPDDR5X     │   └─────────────────────┘    │
+│              │  direct, no eDRAM tier  │                                │
 │              └─────────────────────────┘                                │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -155,7 +154,7 @@ is in flight:
 | **ACU (Attention Compute Unit)** | ✅ this repo | Decides INT8 vs FP16 per tile, runs the MAC array |
 | **KV Cache Engine** | not yet | ChannelQuant compress on write, decompress on read (per-channel INT4 keys / per-token INT4 values + FP16 outlier lane) |
 | **Token Importance Unit** | not yet | Tracks attention weight per cached token → mixed-precision retention (hot tokens stay high precision, cold tokens demoted or evicted) |
-| **Memory Hierarchy Controller** | not yet | Routes between L1 SRAM / L2 3T gain-cell eDRAM / off-chip LPDDR5; uses SHIELD-style refresh disable for ~35% eDRAM energy savings |
+| **Memory Hierarchy Controller** | not yet | Routes between 0.8 MB on-die SRAM and off-chip LPDDR5X, direct (no separate eDRAM tier) |
 
 The precision controller is the **first** to get verified through to
 GDSII because it's the smallest, has the clearest spec, and unblocks
