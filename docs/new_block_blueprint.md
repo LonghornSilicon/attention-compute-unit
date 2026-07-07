@@ -360,11 +360,12 @@ on-chip memories don't exist in the Sky130 std-cell library — you'll
 either generate behavioral models or use OpenRAM. For 16FFC, the
 foundry's memory compiler will provide actual SRAM macros.
 
-**Read first** before starting: the user described the KV Cache
-Engine in detail including the GEAR / RotateKV / Lexico quantization
-approaches and the SHIELD refresh-disable trick for eDRAM. Make sure
-you ask which compression algorithm to implement first — they likely
-have a preference based on what they want to demonstrate.
+**Read first** before starting: the KV Cache Engine's codec is decided —
+**ChannelQuant** (per-channel INT4 keys, grouped G=128 / per-token INT4
+values + FP16 outlier-channel lane), and the block's RTL is already complete
+through Sky130 sign-off in the `kv-cache-engine` repo. The Memory Hierarchy
+Controller still uses the SHIELD refresh-disable trick for the L2 3T gain-cell
+eDRAM.
 
 ---
 
