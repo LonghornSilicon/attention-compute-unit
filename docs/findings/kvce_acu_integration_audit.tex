@@ -96,7 +96,7 @@ lossy~$S$, so we can also measure \emph{decision stability}
 under upstream noise.
 
 The harness lives at
-\texttt{adaptive-precision-attention/analysis/integration\_test\_kv\_pc.py}
+\texttt{attention-compute-unit/analysis/integration\_test\_kv\_pc.py}
 and runs in under two minutes per layer on an RTX~A4000. No tile,
 attention matrix, or per-head activation is persisted to disk; per-tile
 scalars accumulate in RAM and dump as a single JSON summary.
@@ -407,7 +407,7 @@ the same compression ratio.
 \section{Implications per repository}
 \label{sec:implications}
 
-\subsection{\texttt{adaptive-precision-attention} (this repository)}
+\subsection{\texttt{attention-compute-unit} (this repository)}
 
 \begin{itemize}
 \item The precision controller block is validated: rMSE $0.0002$
@@ -470,7 +470,7 @@ python3 sw/reference_model/test_reconstruction_quality.py
 Re-run the integrated five-path harness:
 
 \begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
-cd /home/<user>/adaptive-precision-attention
+cd /home/<user>/attention-compute-unit
 python3 analysis/integration_test_kv_pc.py \
         --seq-len 512 --layers 0,4,8,12,16,20,23 \
         --prompts 1 --delete-cache-after

@@ -160,7 +160,7 @@ against the KV cache quantization noise floor (0.36 rMSE).
 
 ## What this means for each repo
 
-### `adaptive-precision-attention` (this repo)
+### `attention-compute-unit` (this repo)
 
 - The precision controller is validated: rMSE 0.0002 in isolation,
   decision stability 99.8% under lossy inputs. No code changes needed.
@@ -209,7 +209,7 @@ print(f'K cosine sim: {float(v@kh/(np.linalg.norm(v)*np.linalg.norm(kh))):.3f}')
 # Expect cosine ~ 0.975
 
 # Full 7-layer integration test (~75s + model load):
-cd /home/shadeform/adaptive-precision-attention
+cd /home/shadeform/attention-compute-unit
 python3 analysis/integration_test_kv_pc.py \
     --seq-len 512 --layers 0,4,8,12,16,20,23 --prompts 1
 # Expect: path-B rMSE ~ 2e-4, paths C/D/E rMSE ~ 0.36

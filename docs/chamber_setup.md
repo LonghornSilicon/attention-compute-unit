@@ -57,8 +57,8 @@ kit has different names, just substitute them in step 3.
 ```sh
 # On the chamber:
 cd ~/work
-git clone git@github.com:LonghornSilicon/adaptive-precision-attention.git
-cd adaptive-precision-attention/rtl
+git clone git@github.com:LonghornSilicon/attention-compute-unit.git
+cd attention-compute-unit/rtl
 ls *.tcl                  # genus.tcl, innovus.tcl, mmmc.tcl
 ```
 
@@ -69,7 +69,7 @@ If the chamber is air-gapped, scp the repo from a machine that has it:
 git archive --format=tar.gz HEAD -o /tmp/apa.tar.gz
 scp /tmp/apa.tar.gz chamber:~/work/
 # On chamber:
-cd ~/work && tar xzf apa.tar.gz && cd adaptive-precision-attention/rtl
+cd ~/work && tar xzf apa.tar.gz && cd attention-compute-unit/rtl
 ```
 
 ## 3 · Plug in the PDK paths (~3 min)
@@ -104,7 +104,7 @@ If any of those fail, the run will crash 30 seconds in. Catch it now.
 ## 4 · Run Genus synthesis (~5–15 min)
 
 ```sh
-cd ~/work/adaptive-precision-attention/rtl
+cd ~/work/attention-compute-unit/rtl
 mkdir -p reports netlist
 genus -files genus.tcl -log reports/genus.log
 ```

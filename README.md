@@ -170,7 +170,7 @@ the area/timing budgets of every block that uses it.
 ## What's in this repo
 
 ```
-adaptive-precision-attention/
+attention-compute-unit/
 ├── analysis/                  # Python: evolutionary search, fixed-point sim, RTL test-vector gen
 ├── kernels/                   # Triton GPU kernel (correctness proof on real LLM traces)
 ├── rtl/
@@ -403,7 +403,7 @@ Detailed instructions, including troubleshooting, are in
   title  = {Adaptive Precision Attention: Evolutionary Discovery to Hardware-Verified Ratio Gates},
   author = {LonghornSilicon},
   year   = {2026},
-  url    = {https://github.com/LonghornSilicon/adaptive-precision-attention}
+  url    = {https://github.com/LonghornSilicon/attention-compute-unit}
 }
 ```
 

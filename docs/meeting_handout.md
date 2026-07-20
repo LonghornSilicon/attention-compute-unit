@@ -16,7 +16,7 @@ TSMC University Program (tape-out target Summer 2027):
    tile from a single-cycle ratio check. This is the **first block
    complete**: RTL frozen, 253/253 tests pass, Sky130 end-to-end PnR
    signed off (DRC/LVS/antenna/IR-drop clean), ASAP7 area projection,
-   public paper. Repo: <https://github.com/LonghornSilicon/adaptive-precision-attention>.
+   public paper. Repo: <https://github.com/LonghornSilicon/attention-compute-unit>.
 2. **KV Cache Engine** — on-die SRAM (spilling to off-chip LPDDR5X) with
    ChannelQuant compression on writes / decompression on reads
    (per-channel INT4 keys / per-token INT4 values + FP16 outlier lane).
