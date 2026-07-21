@@ -6,6 +6,7 @@ PYTHON       ?= python3
 RTL          := precision_controller.sv
 MATE_RTL     := mate_pv.sv
 MATE_FP16_RTL := mate_pv_fp16.sv
+MATE_QKT_RTL := mate_qkt.sv
 TB_DIR       := tb
 TV_DIR       := $(TB_DIR)/testvectors
 GEN_SCRIPT   := ../analysis/gen_rtl_testvectors.py
@@ -14,11 +15,12 @@ SIM_OUT          := sim.out
 SIM_REAL_OUT     := sim_realdata.out
 SIM_MATE_OUT     := sim_mate.out
 SIM_MATE_FP16_OUT := sim_mate_fp16.out
+SIM_MATE_QKT_OUT := sim_mate_qkt.out
 SYNTH_LOG        := synth.log
 
-.PHONY: all sim sim_realdata sim_mate sim_mate_fp16 testvectors synth clean help
+.PHONY: all sim sim_realdata sim_mate sim_mate_fp16 sim_mate_qkt testvectors synth clean help
 
-all: sim sim_realdata sim_mate sim_mate_fp16
+all: sim sim_realdata sim_mate sim_mate_fp16 sim_mate_qkt
 
 help:
 	@echo "Targets:"
@@ -26,6 +28,7 @@ help:
 	@echo "  sim_realdata  — replay TB on quantized score tiles + boundary cases"
 	@echo "  sim_mate      — mate_pv INT8 P.V MAC bit-exact vs matmul_int8 reference"
 	@echo "  sim_mate_fp16 — mate_pv_fp16 FP16 P.V MAC bit-exact vs matmul_fp16 (fp32 accum)"
+	@echo "  sim_mate_qkt  — mate_qkt Q.Kt decode-scoring bit-exact vs matmul_fp16 (fp32 accum)"
 	@echo "  testvectors   — regenerate scores.hex / expected.hex / labels.txt"
 	@echo "  synth         — Yosys area report (FFs + NAND2-equivalent gate count)"
 	@echo "  clean         — remove sim binaries, hex vectors, synth logs"
@@ -55,6 +58,22 @@ $(TB_DIR)/mate_pv_fp16_vectors.txt: $(TB_DIR)/gen_mate_pv_fp16_vectors.py
 
 $(SIM_MATE_FP16_OUT): $(MATE_FP16_RTL) $(TB_DIR)/tb_mate_pv_fp16.sv
 	iverilog -g2012 -o $@ $^
+
+# ---------------------------------------------------------------------------
+# mate_qkt — Q.Kt decode-scoring engine (fp32 accumulator), bit-exact to matmul_fp16
+# ---------------------------------------------------------------------------
+
+# Runs the decode-scoring TB across three key-counts: L=1 (single key), L=8
+# (rich D corner cases incl. the D=520 long reduction), and L=520 (long context /
+# wide-lane). Each L regenerates its own budget-bounded vectors and elaborates the
+# DUT with a matching lane count (parameter override via iverilog -P).
+sim_mate_qkt: $(MATE_QKT_RTL) $(TB_DIR)/tb_mate_qkt.sv $(TB_DIR)/gen_mate_qkt_vectors.py
+	@for LN in 1 8 520; do \
+	  echo "--- mate_qkt L=$$LN ---"; \
+	  (cd $(TB_DIR) && MATE_QKT_L=$$LN $(PYTHON) gen_mate_qkt_vectors.py); \
+	  iverilog -g2012 -P tb_mate_qkt.L=$$LN -o $(SIM_MATE_QKT_OUT) $(MATE_QKT_RTL) $(TB_DIR)/tb_mate_qkt.sv; \
+	  (cd $(TB_DIR) && ./../$(SIM_MATE_QKT_OUT)) || exit 1; \
+	done
 
 # ---------------------------------------------------------------------------
 # Functional simulation (existing testbench)
@@ -95,6 +114,6 @@ synth: $(RTL) synth.ys
 # ---------------------------------------------------------------------------
 
 clean:
-	rm -f $(SIM_OUT) $(SIM_REAL_OUT) $(SIM_MATE_OUT) $(SYNTH_LOG)
+	rm -f $(SIM_OUT) $(SIM_REAL_OUT) $(SIM_MATE_OUT) $(SIM_MATE_FP16_OUT) $(SIM_MATE_QKT_OUT) $(SYNTH_LOG)
 	rm -f $(TV_DIR)/scores.hex $(TV_DIR)/expected.hex $(TV_DIR)/labels.txt
-	rm -f $(TB_DIR)/mate_pv_vectors.txt
+	rm -f $(TB_DIR)/mate_pv_vectors.txt $(TB_DIR)/mate_pv_fp16_vectors.txt $(TB_DIR)/mate_qkt_vectors.txt
