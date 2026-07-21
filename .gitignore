@@ -43,3 +43,7 @@ docs/isa/*.aux
 docs/isa/*.log
 docs/isa/*.out
 docs/isa/*.toc
+
+# mate_pv generated artifacts
+rtl/tb/mate_pv_vectors.txt
+rtl/sim_mate.out
