@@ -15,8 +15,13 @@ A hardware-verified extension of [FlashAttention](https://arxiv.org/abs/2205.141
 that routes each attention tile to **INT8** or **FP16** at runtime based on
 a single pre-softmax ratio check. ~79% of tiles end up on the cheaper
 INT8 path with zero accuracy loss versus FlashAttention-2, giving a
-theoretical **1.7× KV-cache bandwidth improvement** for ~30 flip-flops
+theoretical **~1.7× KV-cache bandwidth improvement** for ~30 flip-flops
 of additional silicon.
+<!-- Derivations: 79%/21% is a conservative design blend across Qwen2+Phi-2
+(sw/reference_model/example_compiler_use.py:59); measured per-model INT8-safe
+rates are 91.7/97.1/96.6% (Qwen2) and 58.9% (Phi-2). Bandwidth: 0.79*0.5B +
+0.21*1.0B = 0.605x avg -> 1/0.605 = 1.65x, rounded to ~1.7x. The 30 FFs are the
+real Sky130 sign-off count (openlane/precision_controller/results/sky130_80MHz_signoff_metrics.json). -->
 
 This is the **ACU (Attention Compute Unit)** block of the LonghornSilicon
 LLM inference accelerator — one of four blocks targeting TSMC 16nm FinFET (N16FFC) tape-out.
@@ -34,7 +39,7 @@ LLM inference accelerator — one of four blocks targeting TSMC 16nm FinFET (N16
 | **What** | A streaming precision controller that gates attention tiles INT8/FP16 |
 | **Why** | Cuts KV-cache bandwidth ~1.7× with no accuracy loss vs FlashAttention-2 |
 | **How** | Pre-softmax ratio test: `max(|S|)·N > 10·sum(|S|)` → no division, no transcendentals |
-| **Hardware cost** | 30 flip-flops, ~30 µm² in TSMC 16FFC (~0.2% of an 8×8 INT8 MAC array) |
+| **Hardware cost** | 30 flip-flops (real Sky130 sign-off; 3,438 µm² Sky130 stdcell). ~150 µm² in TSMC 16FFC — *16nm est.*, ASAP7-derived (`analysis/tsmc16_fit_report.md`); ~0.2% of an 8×8 INT8 MAC array (also a 16nm est.) |
 | **Verified** | 253/253 testbench cases, signed off on Sky130 (DRC/LVS/antenna/IR-drop clean) |
 | **Status** | Signed off on Sky130 (130nm flow). Full-chip tape-out target Summer 2027 (Lambda 16nm track) via TSMC University Program |
 
@@ -92,10 +97,13 @@ after the last score of the tile streams in.
 
 ### Why this matters for the hardware budget
 
-In TSMC 16FFC the controller is **~30 flip-flops, ~150 µm²**, less than
-**0.2%** of a single 8×8 INT8 MAC array. The cost of *deciding* whether
+In TSMC 16FFC the controller is **~30 flip-flops, ~150 µm²** (*16nm est.*,
+ASAP7-derived — `analysis/tsmc16_fit_report.md`; the real signed-off Sky130
+stdcell area is 3,438 µm²), less than **0.2%** of a single 8×8 INT8 MAC array
+(16FFC MAC ≈ 50k–100k µm², also estimated). The cost of *deciding* whether
 to use INT8 is rounding error against the savings from *actually using*
-INT8 on 79% of tiles.
+INT8 on ~79% of tiles (conservative blend across Qwen2+Phi-2; measured
+per-model 91.7/97.1/96.6% Qwen2, 58.9% Phi-2).
 
 | | FlashAttention-2 | This work |
 |---|---|---|
@@ -221,14 +229,26 @@ attention-compute-unit/
 ### Accuracy (algorithmic)
 
 - **253/253 testbench cases pass** bit-exactly against a Python integer
-  reference (110 directed + 143 replay from real attention-score traces).
-- **Matches FlashAttention-2 accuracy** on Qwen2-0.5B/1.5B/3B and Phi-2
-  (91–97% of attention tiles INT8-safe; INT8 fraction *improves* with
-  scale, suggesting the savings get bigger on larger models).
-- Threshold-of-10 robust to its exact value: the gap between uniform
-  and peaked tiles is 1.5 < ratio < 3.5 (nearly empty in 19,488 tiles).
+  reference (110 directed = 10 hand-written + 100 LCG-random in
+  `rtl/tb/tb_precision_controller.sv`; 143 replay from real attention-score
+  traces in `rtl/tb/tb_realdata.sv`, NUM_TILES=143).
+- **Matches FlashAttention-2 accuracy** on Qwen2-0.5B/1.5B/3B and Phi-2.
+  INT8-safe tile fraction (`analysis/deep_layer_combined_stats.json`,
+  `analysis/phi2_validation_stats.json`): **91.7% / 97.1% / 96.6%** on the
+  three Qwen2 models (the "91–97%" band; INT8 fraction *improves* with scale)
+  and **58.9%** on Phi-2 (MHA, lower INT8 coverage but accuracy still matched).
+- Threshold-of-10 (`analysis/fixed_point_sim.py`, RATIO_THRESHOLD=10.0)
+  robust to its exact value: the gap between uniform and peaked tiles is
+  1.5 < ratio < 3.5 (nearly empty in the 19,488-tile eval corpus — see the
+  bimodality figure in the paper).
 
 ### Hardware (post-PnR Sky130, signed off)
+
+<!-- All values below are the REAL, measured Sky130 sign-off from
+openlane/precision_controller/results/sky130_80MHz_signoff_metrics.json:
+80 MHz = CLOCK_PERIOD 12.5 ns (config.json); FFs=30 (sequential_cell);
+stdcell area=3438.3; die bbox 87.755×98.475, util 0.591; power__total=330.5 µW
+(nom_tt); drc/lvs/antenna/power-grid violations all 0. -->
 
 | Metric | Value |
 |---|---|
@@ -242,9 +262,14 @@ attention-compute-unit/
 | Total power (TT corner) | 330.5 µW |
 | End-to-end flow runtime | ~3 min per pass |
 
-Independently scaling Sky130 → TSMC 16FFC (5× area reduction, 2× speed,
-10× dynamic power reduction): **~700 µm², ~600 MHz, ~30 µW** — within
-margin of the 800 MHz / ~150 µm² ASAP7-derived projection.
+Independently scaling the *measured* Sky130 sign-off (3,438 µm², 80 MHz,
+330.5 µW) to TSMC 16FFC with published node ratios (~5× area, ~2× speed,
+~10× dynamic power) gives **~700 µm², ~30 µW** (*16nm est.*). These are
+projections, not measured 16nm results. NOTE: the ASAP7-derived projection
+(`analysis/tsmc16_fit_report.md`) instead gives **~150 µm² / 800 MHz** — the
+two area estimates differ ~5× and the frequency estimates (Sky130-scaled
+~160 MHz vs ASAP7 ~800 MHz) do not reconcile; treat the 16nm speed/area as a
+range pending the Cadence 16FFC run, not a single number.
 
 ---
 
