@@ -8,6 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Block 1 of this repo: the precision controller (ACU gate) + the repo's
+  # real-Qwen accuracy gate.
   ci:
     uses: LonghornSilicon/.github/.github/workflows/block-ci.yml@main
     with:
@@ -18,3 +20,21 @@ jobs:
       has-paper: false              # the paper builds on main
       has-qwen-test: true           # real-Qwen accuracy gate (rtl branch only)
       # qwen-test-deps uses the default; CPU torch is installed by the reusable job.
+
+  # Block 2 of this repo: the INT8 P·V MAC tile (mate_pv). Same CI treatment as
+  # every other block — its own directed sim (sim_mate), Yosys synth (513 FFs at
+  # the default N=8), and Sky130 sign-off (openlane/mate_pv, 40 MHz). Reference
+  # model + Qwen already run under the precision_controller job above, so they
+  # are off here to avoid duplicating them.
+  ci-mate-pv:
+    uses: LonghornSilicon/.github/.github/workflows/block-ci.yml@main
+    with:
+      block-name: mate_pv
+      expected-ff-count: 513        # default synth N=8 (8 acc×32 + 8 out×32 + 1)
+      sim-target: sim_mate          # its directed TB (bit-exact vs matmul_int8)
+      has-rtl: true
+      has-reference-model: false    # mac_array_ref runs under the block-1 job
+      has-coverage-gate: false
+      has-formal-equivalence: false
+      has-paper: false
+      has-qwen-test: false          # the Qwen gate runs once, under block 1
